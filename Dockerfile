@@ -23,22 +23,24 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Switch to root for installation
 USER root
 
-# 1. Install System Dependencies
-# Combined into one block to reduce image size
+# 1. FIX: Install and generate locales FIRST. 
+# We do this separately so the environment is ready for TeX.
 RUN apt-get -qy update && \
-    apt-get upgrade --yes && \
-    apt-get install -yq --no-install-recommends \
-    # System & Build Tools
-    wget bzip2 ca-certificates sudo locales fonts-liberation \
-    nano cron curl git tzdata less openssh-client vim jq \
-    tini run-one build-essential python3-dev python3-pip \
-    # LaTeX / PDF generation
-    pandoc texlive-xetex texlive-fonts-recommended texlive-plain-generic \
-    cm-super dvipng ffmpeg && \
-    # Locale generation
+    apt-get install -yq --no-install-recommends locales && \
     echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
     locale-gen && \
-    dpkg-reconfigure locales && \
+    dpkg-reconfigure locales
+
+# 2. NOW install everything else (including TeX)
+# Since locales are fixed, TeX will install without crashing.
+RUN apt-get install -yq --no-install-recommends \
+    # System & Build Tools
+    wget bzip2 ca-certificates sudo fonts-liberation \
+    nano cron curl git tzdata less openssh-client vim jq \
+    tini run-one build-essential python3-dev python3-pip \
+    # LaTeX / PDF generation (This caused the crash before)
+    pandoc texlive-xetex texlive-fonts-recommended texlive-plain-generic \
+    cm-super dvipng ffmpeg && \
     # Cleanup
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
