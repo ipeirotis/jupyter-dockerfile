@@ -1,213 +1,99 @@
-FROM ubuntu:latest
-  
+# Use a pinned version for stability
+FROM ubuntu:22.04
+
 # Configure environment
-ENV LANGUAGE en_US.UTF-8
-ENV LANG en_US.UTF-8
-ENV LC_ALL en_US.UTF-8
-ENV PYTHONIOENCODING UTF-8
-ENV SHELL=/bin/bash
-ENV NB_USER="ubuntu"
-ENV NB_UID="1000"
-ENV NB_GID="100"    
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANGUAGE=en_US.UTF-8 \
+    LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
+    PYTHONIOENCODING=UTF-8 \
+    SHELL=/bin/bash \
+    NB_USER="ubuntu" \
+    NB_UID="1000" \
+    NB_GID="100" \
+    # Fix for PEP 668: Allow pip to install globally in container
+    PIP_BREAK_SYSTEM_PACKAGES=1
 
+# WARN: Passing secrets as ARG leaves them in the image history.
 ARG NETRC
-ENV DEBIAN_FRONTEND noninteractive
 
-# Fix: https://github.com/hadolint/hadolint/wiki/DL4006
-# Fix: https://github.com/koalaman/shellcheck/wiki/SC3014
+# Shell safety settings
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# We still setup everything as root, change permissions later
+# Switch to root for installation
 USER root
 
-
-
+# 1. Install System Dependencies
+# Combined into one block to reduce image size
 RUN apt-get -qy update && \
     apt-get upgrade --yes && \
     apt-get install -yq --no-install-recommends \
-      wget \
-      bzip2 \
-      ca-certificates \
-      sudo \
-      locales \
-      fonts-liberation \
-      pandoc \
-      tini \
-      run-one
+    # System & Build Tools
+    wget bzip2 ca-certificates sudo locales fonts-liberation \
+    nano cron curl git tzdata less openssh-client vim jq \
+    tini run-one build-essential python3-dev python3-pip \
+    # LaTeX / PDF generation
+    pandoc texlive-xetex texlive-fonts-recommended texlive-plain-generic \
+    cm-super dvipng ffmpeg && \
+    # Locale generation
+    echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
+    locale-gen && \
+    dpkg-reconfigure locales && \
+    # Cleanup
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
-    locale-gen
-
-RUN dpkg-reconfigure locales
-    
-
-RUN  apt-get install -yq  --no-install-recommends \
-      nano \
-      cron \
-      curl \
-      git \
-      tzdata \
-      less \
-      openssh-client \      
-      vim \
-      jq && \
-  apt-get install -qy  --no-install-recommends \
-      texlive-xetex \
-      texlive-fonts-recommended \
-      texlive-plain-generic && \  
-  apt-get install -qy  --no-install-recommends \
-      build-essential \
-      cm-super \
-      dvipng \
-      ffmpeg \
-      python3-dev \
-      python3-pip 
-
-    
-RUN apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
-
-# Copy a script that we will use to correct permissions after running certain commands
+# 2. Copy Helper Scripts
 COPY fix-permissions /usr/local/bin/fix-permissions
-RUN chmod a+rx /usr/local/bin/fix-permissions
 COPY start-notebook.sh /usr/local/bin/
-RUN chmod a+rx /usr/local/bin/start-notebook.sh
+RUN chmod a+rx /usr/local/bin/fix-permissions /usr/local/bin/start-notebook.sh
 
-# Enable prompt color in the skeleton .bashrc before creating the default NB_USER
-RUN sed -i 's/^#force_color_prompt=yes/force_color_prompt=yes/' /etc/skel/.bashrc
-
-# Create NB_USER with name jovyan user with UID=1000 and in the 'users' group
-# and make sure these dirs are writable by the `users` group.
-RUN echo "auth requisite pam_deny.so" >> /etc/pam.d/su && \
+# 3. User & Permission Setup
+RUN sed -i 's/^#force_color_prompt=yes/force_color_prompt=yes/' /etc/skel/.bashrc && \
+    echo "auth requisite pam_deny.so" >> /etc/pam.d/su && \
     sed -i.bak -e 's/^%admin/#%admin/' /etc/sudoers && \
     sed -i.bak -e 's/^%sudo/#%sudo/' /etc/sudoers && \
-    useradd -m -s /bin/bash -N -u $NB_UID $NB_USER && \
+    # Create user if not exists
+    if ! id -u $NB_UID > /dev/null 2>&1; then \
+        useradd -m -s /bin/bash -N -u $NB_UID $NB_USER; \
+    fi && \
     chmod g+w /etc/passwd && \
+    echo "ALL  ALL = (ALL) NOPASSWD: ALL" >> /etc/sudoers && \
+    # Setup work directory
+    mkdir -p /home/$NB_USER/notebooks && \
+    chown -R $NB_USER:$NB_GID /home/$NB_USER && \
     fix-permissions /home/$NB_USER
 
-RUN echo "ALL  ALL = (ALL) NOPASSWD: ALL" >> /etc/sudoers
+# 4. Install Python Dependencies
+# We upgrade pip first, then install from requirements.txt
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install -U pip --no-cache-dir && \
+    pip3 install --no-cache-dir -r /tmp/requirements.txt
 
-# Setup work directory
-RUN mkdir -p /home/$NB_USER/notebooks
-RUN chown -R $NB_USER:$NB_GID /home/$NB_USER
-RUN fix-permissions /home/$NB_USER
-
-
-
-# install latest version of pip
-RUN pip3 install -U pip
-
-# Code formatter and linter
-RUN pip3 install \
-        black \
-        isort \
-        yapf \
-        autopep8 \
-        flake8 \
-        flake8-nb
-
-# Code for interacting with MySQL
-RUN pip3 install \
-        PyMySQL \
-        sqlalchemy
-
-# Add standard data science libraries
-RUN pip3 install \
-    numpy \
-    scipy \
-    cython \
-    pandas \
-    dask \
-    sympy \
-    h5py \
-    xlrd \
-    openpyxl \
-    numba \
-    statsmodels
-    
-
-RUN pip3 install \
-    scikit-learn \
-    tensorflow \
-    keras \
-    torch \
-    torchvision \
-    torchaudio 
-
-# Add standard visualization libraries
-RUN pip3 install \
-    altair \
-    bokeh \
-    matplotlib \
-    pandas \
-    seaborn \
-    plotly
-    
-# add geospatial libraries
-RUN pip3 install \
-    shapely \
-    pyproj \
-    fiona \
-    geopandas \
-    program \
-    Descartes \
-    folium \ 
-    geoplot \
-    mapclassify
-
-
-# add libraries for teaching web APIs
-RUN pip3 install \
-    requests \
-    Flask
-    
-# add libraries for NLP
-RUN pip3 install \
-    spacy \
-    nltk
-    
-# Add libraries for Web crawling
-RUN pip3 install \
-    bs4
-    
-# install basic Python libraries to run Jupyter
-RUN pip3 install \
-    jupyter \
-    notebook \
-    nbformat \
-    nbstripout \
-    jupyterlab-code-formatter \
-    jupyterlab-git \
-    ipywidgets \ 
-    widgetsnbextension \ 
-    jupyterlab \
-    jupyterlab-lsp \
-    python-lsp-server[all]
-
+# 5. Jupyter Configuration
 COPY overrides.json /opt/conda/share/jupyter/lab/settings/
-
 COPY jupyter_notebook_config.py /etc/jupyter/
-RUN echo "c.NotebookApp.password = 'sha1:44967f2c7dbb:4ae5e013fa8bae6fd8d4b8fa88775c0c5caeffbf'" >> /etc/jupyter/jupyter_notebook_config.py
-RUN echo "c.NotebookApp.notebook_dir = '/home/ubuntu/notebooks'" >> /etc/jupyter/jupyter_notebook_config.py
-RUN echo "c.Completer.use_jedi = False" >> /etc/jupyter/jupyter_notebook_config.py
 
+RUN echo "c.NotebookApp.password = 'sha1:44967f2c7dbb:4ae5e013fa8bae6fd8d4b8fa88775c0c5caeffbf'" >> /etc/jupyter/jupyter_notebook_config.py && \
+    echo "c.NotebookApp.notebook_dir = '/home/ubuntu/notebooks'" >> /etc/jupyter/jupyter_notebook_config.py && \
+    echo "c.Completer.use_jedi = False" >> /etc/jupyter/jupyter_notebook_config.py
 
-
-# Import matplotlib the first time to build the font cache
+# 6. Finalize
+# Build matplotlib font cache
 RUN MPLBACKEND=Agg python3 -c "import matplotlib.pyplot" && \
     fix-permissions "/home/${NB_USER}"
 
+# Switch to user
 USER $NB_UID
 ENV HOME=/home/$NB_USER
 ENV PATH=$HOME/.local/bin:$PATH
 WORKDIR $HOME
 
-RUN echo "$NETRC" > $HOME/.netrc
-RUN chmod 600 $HOME/.netrc
+# Handle NETRC (Optional)
+RUN if [ -n "$NETRC" ]; then \
+        echo "$NETRC" > $HOME/.netrc && chmod 600 $HOME/.netrc; \
+    fi
 
-# Open port for Jupyter
 EXPOSE 8888
-
 ENTRYPOINT ["/usr/bin/tini", "-g", "--"]
 CMD ["start-notebook.sh"]
-
