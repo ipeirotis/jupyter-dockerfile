@@ -1,0 +1,71 @@
+# --- Code formatter and linter ---
+black
+isort
+yapf
+autopep8
+flake8
+flake8-nb
+
+# --- Code for interacting with MySQL ---
+PyMySQL
+sqlalchemy
+
+# --- Standard data science libraries ---
+numpy
+scipy
+cython
+pandas
+dask
+sympy
+h5py
+openpyxl
+numba
+statsmodels
+
+# --- Machine Learning & Deep Learning ---
+scikit-learn
+tensorflow
+torch
+torchvision
+torchaudio
+
+# --- Standard visualization libraries ---
+altair
+bokeh
+matplotlib
+seaborn
+plotly
+
+# --- Geospatial libraries ---
+shapely
+pyproj
+fiona
+geopandas
+Descartes
+folium
+geoplot
+mapclassify
+
+# --- Web APIs ---
+requests
+Flask
+
+# --- NLP ---
+spacy
+nltk
+
+# --- Web crawling ---
+bs4
+
+# --- Jupyter core & extensions ---
+jupyter
+notebook
+nbformat
+nbstripout
+jupyterlab-code-formatter
+jupyterlab-git
+ipywidgets
+widgetsnbextension
+jupyterlab
+jupyterlab-lsp
+python-lsp-server[all]
