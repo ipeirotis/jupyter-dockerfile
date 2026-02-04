@@ -18,8 +18,8 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list && \
 
 # 2. Install Python Libraries & JupyterLab
 COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install -U pip --no-cache-dir && \
-    pip3 install --no-cache-dir -r /tmp/requirements.txt && \
+# FIX: Do not upgrade pip (it is managed by the system). Just install requirements.
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt && \
     pip3 install --no-cache-dir jupyterlab
 
 # 3. Add the "Repo Cloner" Script
