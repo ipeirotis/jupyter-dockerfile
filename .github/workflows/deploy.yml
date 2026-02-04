@@ -1,0 +1,43 @@
+name: Deploy Workstation
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  PROJECT_ID: panos-jupyter
+  REGION: us-east1
+  IMAGE_URI: us-east1-docker.pkg.dev/panos-jupyter/ipeirotis/dealing-with-data:latest
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-east1-docker.pkg.dev
+
+      # 1. Build and Push the Docker Image
+      - name: Build and Push Docker
+        run: |
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
+
+      # 2. Apply Terraform (Infrastructure Updates)
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Apply
+        run: |
+          terraform init
+          terraform apply -auto-approve
