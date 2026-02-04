@@ -9,10 +9,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
 USER root
 
 # 1. Install System Tools & Jupyter Prerequisites
-RUN apt-get update && \
+# Fix: Remove broken Yarn repo list that comes with the base image
+RUN rm -f /etc/apt/sources.list.d/yarn.list && \
+    apt-get update && \
     apt-get install -yq --no-install-recommends \
-    git build-essential python3-dev python3-pip \
-    # Cleanup
+    git build-essential python3-dev python3-pip && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 2. Install Python Libraries & JupyterLab
